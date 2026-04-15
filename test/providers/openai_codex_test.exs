@@ -143,6 +143,45 @@ defmodule ReqLLM.Providers.OpenAICodexTest do
       assert {"authorization", "Bearer #{jwt_with_account_id("acct_file_stream")}"} in request.headers
       assert {"chatgpt-account-id", "acct_file_stream"} in request.headers
     end
+
+    test "omits previous_response_id for tool resume flow while keeping store=false" do
+      {:ok, model} = ReqLLM.model("openai_codex:gpt-5.3-codex-spark")
+
+      assistant =
+        ReqLLM.Context.assistant(
+          "",
+          tool_calls: [{"test", %{a: 1, b: 2}, id: "call_123"}],
+          metadata: %{response_id: "resp_prev_123"}
+        )
+
+      tool_result = ReqLLM.Context.tool_result("call_123", "test", %{result: "1 + 2"})
+
+      context =
+        ReqLLM.context([assistant, tool_result, ReqLLM.Context.user("Use the tool result")])
+
+      {:ok, request} =
+        OpenAICodex.attach_stream(
+          model,
+          context,
+          [
+            provider_options: [
+              auth_mode: :oauth,
+              access_token: jwt_with_account_id("acct_resume")
+            ]
+          ],
+          nil
+        )
+
+      body = Jason.decode!(request.body)
+
+      refute Map.has_key?(body, "previous_response_id")
+      assert body["store"] == false
+
+      assert Enum.any?(
+               body["input"],
+               &(&1["type"] == "function_call_output" and &1["call_id"] == "call_123")
+             )
+    end
   end
 
   describe "decode_stream_event/3" do
