@@ -182,6 +182,36 @@ defmodule ReqLLM.Providers.OpenAICodexTest do
                &(&1["type"] == "function_call_output" and &1["call_id"] == "call_123")
              )
     end
+
+    test "omits previous_response_id for explicit tool_outputs resume while keeping store=false" do
+      {:ok, model} = ReqLLM.model("openai_codex:gpt-5.3-codex-spark")
+      context = ReqLLM.context([ReqLLM.Context.user("Use the provided tool output")])
+
+      {:ok, request} =
+        OpenAICodex.attach_stream(
+          model,
+          context,
+          [
+            provider_options: [
+              auth_mode: :oauth,
+              access_token: jwt_with_account_id("acct_manual_resume"),
+              previous_response_id: "resp_prev_manual",
+              tool_outputs: [[call_id: "call_456", output: %{result: "manual"}]]
+            ]
+          ],
+          nil
+        )
+
+      body = Jason.decode!(request.body)
+
+      refute Map.has_key?(body, "previous_response_id")
+      assert body["store"] == false
+
+      assert Enum.any?(
+               body["input"],
+               &(&1["type"] == "function_call_output" and &1["call_id"] == "call_456")
+             )
+    end
   end
 
   describe "decode_stream_event/3" do

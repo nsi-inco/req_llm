@@ -283,7 +283,7 @@ defmodule ReqLLM.Providers.OpenAICodex do
     instructions = extract_instructions(context) || ""
 
     body =
-      if tool_resume_context?(context) do
+      if tool_resume_body?(body) do
         Map.delete(body, "previous_response_id")
       else
         body
@@ -300,12 +300,14 @@ defmodule ReqLLM.Providers.OpenAICodex do
     |> maybe_put_parallel_tool_calls(provider_opts[:openai_parallel_tool_calls])
   end
 
-  defp tool_resume_context?(context) do
-    Enum.any?(context.messages, fn
-      %{role: :tool, tool_call_id: id} when is_binary(id) -> true
+  defp tool_resume_body?(%{"input" => input}) when is_list(input) do
+    Enum.any?(input, fn
+      %{"type" => "function_call_output", "call_id" => id} when is_binary(id) -> true
       _ -> false
     end)
   end
+
+  defp tool_resume_body?(_), do: false
 
   defp normalize_stream_event!(%{data: "[DONE]"} = event), do: event
 
